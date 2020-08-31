@@ -1,0 +1,171 @@
+---
+title: "UPS Sales Time Series Forecasting"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+Set the working directory and loading the data onto R for analysis. 
+
+```{r}
+getwd()
+setwd("D:/Learning/UPS - Yunus/")
+stores = read.csv("ups_dataset.csv")
+```
+
+Lets view the data to understand what it looks like 
+
+```{r}
+head(stores)
+```
+
+From the looks of the dataset, the store and department need to be factorized (currently stored as integers). The date variable needs to be converted to a date format for better analysis. 
+
+The IsHoliday variable represents whether the unit of analysis (that week in question) contained a holiday or not so that we may attribute increased sales if necessary. 
+
+
+Converting the department & store columns into categorical variables
+
+```{r}
+stores$Store = factor(stores$Store)
+stores$Dept = factor(stores$Dept)
+```
+
+Change the date column which is currently considered as a factor into date format for our analysis. 
+
+```{r}
+stores$Date = as.Date(stores$Date, format = "%m/%d/%Y")
+```
+
+Converting the binary variable IsHoliday into 0 / 1 instead of being represented as TRUE / FALSE for better analysis. 
+
+```{r}
+stores$IsHoliday = as.integer(as.logical(stores$IsHoliday))
+```
+
+## Exploratory Data Analysis
+
+Lets examine the descriptive statistics of the data. 
+
+```{r}
+summary(stores)
+```
+
+Weekly sales has negative values as well. Could be because that particular store-department combination might have had more returns than purchases made by customers for the given unit of analysis. 
+
+Similarly the date ranges between Feb 2010 and Oct 2012. 
+
+In real life, we expect holidays to bring about more sales. Lets check if this assumption holds good by doing a Pearson correlation test. 
+
+```{r}
+cor(stores$Weekly_Sales, stores$IsHoliday, use = "everything", method = "pearson")
+```
+
+Correlation co-efficient of 0.01 indicates that holidays do not necessarily affect the sales amount. 
+
+Plotting the weekly sales amounts
+
+```{r}
+options(scipen=999) # Disabling scientific notation
+hist(stores$Weekly_Sales) 
+```
+
+
+#### Loading the libraries needed for modelling
+
+```{r}
+library(tseries)
+library(forecast)
+```
+
+Dropping the IsHoliday column from the analysis since it need not be considered. 
+
+```{r}
+stores = subset(stores, select = -c(IsHoliday))
+```
+
+Filtering out Store 1, Department 1 to simplify analysis. 
+
+```{r}
+store_11 = filter(stores, stores$Store == 1 & stores$Dept == 1)
+ts_stores11 = subset(store_11, select = -c(store_11$Store, store_11$Dept))
+time_stores11 = ts(store_11$Weekly_Sales, start = 2010, end = 2012, frequency = 52)
+plot(time_stores11) 
+```
+
+The time series appears to have spikes every now and then. There is no general trend of increase / decrease over the various weeks. 
+
+```{r}
+plot(time_stores11)+abline(reg=lm(time_stores11~time(time_stores11))) 
+```
+
+Trying to fit a linear line along the time series. Indicates a slight decrease over the various weeks of observation. 
+
+```{r}
+dec_11 = decompose(time_stores11)
+plot(dec_11)
+```
+
+On decomposing the time series, we can see that the seasonal graph matches very closely with our observed data. 
+
+### Attempting to make the time series stationary by taking the log and differentiated log of the weekly amounts 
+
+```{r}
+plot(log(time_stores11))
+```
+
+```{r}
+plot(diff(log(time_stores11)))
+```
+
+```{r}
+boxplot(time_stores11~cycle(time_stores11))
+```
+
+## Identify model parameters for estimation
+
+```{r}
+ts_store11_data <- ts(log(time_stores11),frequency = 52)
+```
+
+Calculate the autocorrelation function 
+
+```{r}
+acf(time_stores11) 
+```
+
+```{r}
+acf(diff(log(time_stores11)))
+```
+
+```{r}
+pacf(diff(log(time_stores11))) 
+```
+
+
+```{r}
+plot(diff(log(time_stores11)))
+```
+
+```{r}
+fit <- arima(log(time_stores11),c(0,1,1),seasonal = list(order=c(0,1,1),period=52))
+fit
+```
+
+Predict for next 4 weeks
+
+```{r}
+pred <- predict(fit,n.ahead=4) 
+pred
+```
+
+```{r}
+pred1<-round(2.718^pred$pred,0)  
+pred1
+```
+
+```{r}
+ts.plot(time_stores11,pred1,log="y",lty=c(1,3))
+```
+
